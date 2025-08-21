@@ -210,6 +210,7 @@ export function EvalTasks({ repo }: Props) {
   const [completedSortField, setCompletedSortField] = useState<SortField>('created_at')
   const [completedSortDirection, setCompletedSortDirection] = useState<SortDirection>('desc')
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+  const [searchQuery, setSearchQuery] = useState<string>('')
 
   // Set up auto-refresh for tasks
   useEffect(() => {
@@ -412,6 +413,48 @@ export function EvalTasks({ repo }: Props) {
     })
   }
 
+  const taskMatchesQuery = (task: EvalTask, q: string) => {
+    if (!q) return true
+    const haystacks: string[] = []
+    const displayStatus = getDisplayStatus(task)
+    haystacks.push(
+      task.policy_name || '',
+      task.policy_id,
+      task.sim_suite || '',
+      displayStatus || task.status || '',
+      task.user_id || '',
+      task.assignee || '',
+      String(task.retries ?? '')
+    )
+    if (task.attributes) {
+      try {
+        haystacks.push(JSON.stringify(task.attributes))
+        if ((task as any).attributes?.git_hash) haystacks.push(String((task as any).attributes.git_hash))
+      } catch {}
+    }
+    if (task.created_at) {
+      haystacks.push(task.created_at)
+      try {
+        haystacks.push(new Date(task.created_at + 'Z').toLocaleString())
+      } catch {}
+    }
+    if (task.updated_at) {
+      haystacks.push(task.updated_at)
+      try {
+        haystacks.push(new Date(task.updated_at + 'Z').toLocaleString())
+      } catch {}
+    }
+    if (task.assigned_at) {
+      haystacks.push(task.assigned_at)
+      try {
+        haystacks.push(new Date(task.assigned_at + 'Z').toLocaleString())
+      } catch {}
+    }
+
+    const joined = haystacks.join(' ').toLowerCase()
+    return joined.includes(q)
+  }
+
   const handleSort = (field: SortField, isActive: boolean) => {
     if (isActive) {
       setActiveSortField(field)
@@ -458,8 +501,11 @@ export function EvalTasks({ repo }: Props) {
     )
   }
 
-  const activeTasks = tasks.filter((t) => t.status === 'unprocessed')
-  const historyTasks = tasks.filter((t) => t.status !== 'unprocessed')
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+  const visibleTasks = normalizedQuery ? tasks.filter((t) => taskMatchesQuery(t, normalizedQuery)) : tasks
+
+  const activeTasks = visibleTasks.filter((t) => t.status === 'unprocessed')
+  const historyTasks = visibleTasks.filter((t) => t.status !== 'unprocessed')
 
   const sortedActiveTasks = sortTasks(activeTasks, activeSortField, activeSortDirection)
   const sortedHistoryTasks = sortTasks(historyTasks, completedSortField, completedSortDirection)
@@ -669,6 +715,24 @@ export function EvalTasks({ repo }: Props) {
             </button>
           </GroupCell>
         </InputGroup>
+      </div>
+
+      {/* Global Search (filters both Active and History) */}
+      <div style={{ marginBottom: '16px' }}>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search tasks (policy, suite, status, user, assignee, git hash, attributes, dates)"
+          style={{
+            width: '100%',
+            padding: '10px 12px',
+            borderRadius: 8,
+            border: '1px solid #d1d5db',
+            fontSize: 14,
+            backgroundColor: '#fff',
+          }}
+        />
       </div>
 
       {/* Active Section */}
