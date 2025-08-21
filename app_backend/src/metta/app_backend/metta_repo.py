@@ -1,3 +1,4 @@
+from enum import Enum
 import hashlib
 import logging
 import secrets
@@ -5,9 +6,9 @@ import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Dict, Literal
 
-from psycopg import AsyncConnection, Connection
+from psycopg import AsyncConnection, Connection, sql
 from psycopg.rows import class_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool, PoolTimeout
@@ -1493,18 +1494,7 @@ class MettaRepo:
         git_hash: str | None = None,
         policy_ids: list[uuid.UUID] | None = None,
         sim_suites: list[str] | None = None,
-        # tenant_id: uuid.UUID | None = None,  # <- uncomment to enforce per-tenant filtering
     ) -> list["EvalTaskWithPolicyName"]:
-        # ---- input hardening ----------------------------------------------------
-        try:
-            limit = int(limit)
-        except Exception:
-            raise ValueError("limit must be an integer")
-
-        if limit <= 0:
-            return []
-        if limit > MAX_LIMIT:
-            limit = MAX_LIMIT
 
         def _norm_list(xs):
             """Deduplicate while preserving order and unwrap enums."""
@@ -1518,11 +1508,7 @@ class MettaRepo:
             return out
 
         conditions = []
-        params = {"limit": limit}
-
-        # if tenant_id:
-        #     conditions.append(sql.SQL("et.user_id = %(tenant_id)s"))
-        #     params["tenant_id"] = tenant_id
+        params: Dict[str, Any] = {"limit": limit}
 
         if statuses is not None:
             statuses = _norm_list(statuses)
