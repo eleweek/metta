@@ -757,7 +757,7 @@ class MettaRepo:
         async with self.connect() as con:
             result = await con.execute(
                 """
-                UPDATE training_runs 
+                UPDATE training_runs
                 SET status = %s, finished_at = CASE WHEN %s != 'running' THEN CURRENT_TIMESTAMP ELSE finished_at END
                 WHERE id = %s
                 """,
@@ -1493,48 +1493,83 @@ class MettaRepo:
         git_hash: str | None = None,
         policy_ids: list[uuid.UUID] | None = None,
         sim_suites: list[str] | None = None,
-    ) -> list[EvalTaskWithPolicyName]:
+        # tenant_id: uuid.UUID | None = None,  # <- uncomment to enforce per-tenant filtering
+    ) -> list["EvalTaskWithPolicyName"]:
+        # ---- input hardening ----------------------------------------------------
+        try:
+            limit = int(limit)
+        except Exception:
+            raise ValueError("limit must be an integer")
+
+        if limit <= 0:
+            return []
+        if limit > MAX_LIMIT:
+            limit = MAX_LIMIT
+
+        def _norm_list(xs):
+            """Deduplicate while preserving order and unwrap enums."""
+            seen = set()
+            out = []
+            for x in xs:
+                v = x.value if isinstance(x, Enum) else x
+                if v not in seen:
+                    seen.add(v)
+                    out.append(v)
+            return out
+
+        conditions = []
+        params = {"limit": limit}
+
+        # if tenant_id:
+        #     conditions.append(sql.SQL("et.user_id = %(tenant_id)s"))
+        #     params["tenant_id"] = tenant_id
+
+        if statuses is not None:
+            statuses = _norm_list(statuses)
+            if not statuses:
+                return []  # empty filter => empty result (safer default)
+            params["statuses"] = statuses
+            conditions.append(sql.SQL("et.status = ANY(%(statuses)s)"))
+
+        if git_hash is not None:
+            # basic sanity check for common Git SHA lengths
+            if not re.fullmatch(r"[0-9a-fA-F]{7,64}", git_hash):
+                raise ValueError("git_hash must be a hex SHA (7–64 chars)")
+            params["git_hash"] = git_hash.lower()
+            conditions.append(sql.SQL("(et.attributes->>'git_hash') = %(git_hash)s"))
+
+        if policy_ids is not None:
+            policy_ids = _norm_list(policy_ids)
+            if not policy_ids:
+                return []
+            params["policy_ids"] = policy_ids
+            conditions.append(sql.SQL("et.policy_id = ANY(%(policy_ids)s::uuid[])"))
+
+        if sim_suites is not None:
+            sim_suites = _norm_list(sim_suites)
+            if not sim_suites:
+                return []
+            params["sim_suites"] = sim_suites
+            conditions.append(sql.SQL("et.sim_suite = ANY(%(sim_suites)s)"))
+
+        where_sql = sql.SQL(" AND ").join(conditions) if conditions else sql.SQL("TRUE")
+
+        query = sql.SQL("""
+            SELECT et.id, et.policy_id, et.sim_suite, et.status, et.assigned_at,
+                et.assignee, et.created_at, et.attributes, et.retries,
+                p.name AS policy_name, et.user_id, et.updated_at
+            FROM eval_tasks et
+            LEFT JOIN policies p ON et.policy_id = p.id
+            WHERE {where}
+            ORDER BY et.created_at DESC
+            LIMIT %(limit)s
+        """).format(where=where_sql)
+
         async with self.connect() as con:
-            # Build the WHERE clause dynamically
-            where_conditions = []
-            params = []
-
-            if statuses:
-                placeholders = ", ".join(["%s"] * len(statuses))
-                where_conditions.append(f"et.status IN ({placeholders})")
-                params.extend(statuses)
-
-            if git_hash:
-                where_conditions.append("et.attributes->>'git_hash' = %s")
-                params.append(git_hash)
-
-            if policy_ids:
-                placeholders = ", ".join(["%s"] * len(policy_ids))
-                where_conditions.append(f"et.policy_id IN ({placeholders})")
-                params.extend(policy_ids)
-
-            if sim_suites:
-                placeholders = ", ".join(["%s"] * len(sim_suites))
-                where_conditions.append(f"et.sim_suite IN ({placeholders})")
-                params.extend(sim_suites)
-
-            where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
-            params.append(limit)
-
             async with con.cursor(row_factory=class_row(EvalTaskWithPolicyName)) as cur:
-                await cur.execute(
-                    f"""
-                    SELECT et.id, et.policy_id, et.sim_suite, et.status, et.assigned_at,
-                           et.assignee, et.created_at, et.attributes, et.retries,
-                           p.name as policy_name, et.user_id, et.updated_at
-                    FROM eval_tasks et
-                    LEFT JOIN policies p ON et.policy_id = p.id
-                    WHERE {where_clause}
-                    ORDER BY et.created_at DESC
-                    LIMIT %s
-                    """,
-                    params,
-                )
+                # keep long scans from wedging the connection
+                await cur.execute("SET LOCAL statement_timeout = %s", (QUERY_TIMEOUT_MS,))
+                await cur.execute(query, params)
                 return await cur.fetchall()
 
     async def get_git_hashes_for_workers(self, assignees: list[str]) -> dict[str, list[str]]:
