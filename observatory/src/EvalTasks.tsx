@@ -721,37 +721,21 @@ export function EvalTasks({ repo }: Props) {
 
       {/* Global Search (filters both Active and History) */}
       <div style={{ marginBottom: '16px', position: 'relative' }}>
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => {
-            const v = (e.target as HTMLInputElement).value
-            setSearchQuery(v)
-            loadTasks(v)
-          }}
-          placeholder="Search tasks (policy, suite, status, user, assignee, git hash, attributes, dates)"
-          style={{
-            width: '100%',
-            padding: '10px 12px',
-            paddingRight: searchLoading ? 36 : undefined,
-            borderRadius: 8,
-            border: '1px solid #d1d5db',
-            fontSize: 14,
-            backgroundColor: '#fff',
-          }}
-        />
         {searchLoading && (
           <div
+            aria-hidden
             style={{
               position: 'absolute',
-              right: 10,
+              left: -24,
               top: '50%',
               transform: 'translateY(-50%)',
+              width: 16,
+              height: 16,
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               pointerEvents: 'none',
             }}
-            aria-hidden
           >
             <svg width="16" height="16" viewBox="0 0 50 50" role="img" aria-label="Loading">
               <circle cx="25" cy="25" r="20" stroke="#9ca3af" strokeWidth="4" fill="none" opacity="0.3" />
@@ -768,6 +752,24 @@ export function EvalTasks({ repo }: Props) {
             </svg>
           </div>
         )}
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => {
+            const v = (e.target as HTMLInputElement).value
+            setSearchQuery(v)
+            loadTasks(v)
+          }}
+          placeholder="Search tasks (policy, suite, status, user, assignee, git hash, attributes, dates)"
+          style={{
+            width: '100%',
+            padding: '10px 12px',
+            borderRadius: 8,
+            border: '1px solid #d1d5db',
+            fontSize: 14,
+            backgroundColor: '#fff',
+          }}
+        />
       </div>
 
       {/* Active Section */}
