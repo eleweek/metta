@@ -212,20 +212,21 @@ export function EvalTasks({ repo }: Props) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState<string>('')
 
-  // Set up auto-refresh for tasks
+  // Set up auto-refresh for tasks; keep searchQuery fresh in the callback
   useEffect(() => {
-    loadTasks()
-    const interval = setInterval(loadTasks, 5000) // Refresh every 5 seconds
+    loadTasks(searchQuery)
+    const interval = setInterval(() => loadTasks(searchQuery), 5000) // Refresh every 5 seconds
 
     return () => {
       clearInterval(interval)
     }
-  }, [])
+  }, [searchQuery])
 
-  const loadTasks = async () => {
+  const loadTasks = async (q?: string) => {
     try {
-      const tasks = await repo.getEvalTasks()
-      setTasks(tasks)
+      const loaded = await repo.getEvalTasks(q ?? searchQuery)
+      console.log('Loaded', loaded)
+      setTasks(loaded)
     } catch (err: any) {
       console.error('Failed to refresh tasks:', err)
     }
@@ -501,11 +502,8 @@ export function EvalTasks({ repo }: Props) {
     )
   }
 
-  const normalizedQuery = searchQuery.trim().toLowerCase()
-  const visibleTasks = normalizedQuery ? tasks.filter((t) => taskMatchesQuery(t, normalizedQuery)) : tasks
-
-  const activeTasks = visibleTasks.filter((t) => t.status === 'unprocessed')
-  const historyTasks = visibleTasks.filter((t) => t.status !== 'unprocessed')
+  const activeTasks = tasks.filter((t) => t.status === 'unprocessed')
+  const historyTasks = tasks.filter((t) => t.status !== 'unprocessed')
 
   const sortedActiveTasks = sortTasks(activeTasks, activeSortField, activeSortDirection)
   const sortedHistoryTasks = sortTasks(historyTasks, completedSortField, completedSortDirection)
@@ -722,7 +720,11 @@ export function EvalTasks({ repo }: Props) {
         <input
           type="text"
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => {
+            const v = (e.target as HTMLInputElement).value
+            setSearchQuery(v)
+            loadTasks(v)
+          }}
           placeholder="Search tasks (policy, suite, status, user, assignee, git hash, attributes, dates)"
           style={{
             width: '100%',

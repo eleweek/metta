@@ -1,4 +1,5 @@
 from enum import Enum
+import re
 import hashlib
 import logging
 import secrets
@@ -1494,6 +1495,7 @@ class MettaRepo:
         git_hash: str | None = None,
         policy_ids: list[uuid.UUID] | None = None,
         sim_suites: list[str] | None = None,
+        search: str | None = None,
     ) -> list["EvalTaskWithPolicyName"]:
 
         def _norm_list(xs):
@@ -1538,6 +1540,17 @@ class MettaRepo:
             params["sim_suites"] = sim_suites
             conditions.append(sql.SQL("et.sim_suite = ANY(%(sim_suites)s)"))
 
+        if search is not None and search.strip() != "":
+            params["q"] = f"%{search.strip()}%"
+            conditions.append(
+                sql.SQL(
+                    "(COALESCE(p.name,'') ILIKE %(q)s OR et.policy_id::text ILIKE %(q)s OR et.sim_suite ILIKE %(q)s "
+                    "OR et.status ILIKE %(q)s OR COALESCE(et.assignee,'') ILIKE %(q)s OR COALESCE(et.user_id,'') ILIKE %(q)s "
+                    "OR et.retries::text ILIKE %(q)s OR et.created_at::text ILIKE %(q)s OR et.updated_at::text ILIKE %(q)s OR et.assigned_at::text ILIKE %(q)s "
+                    "OR (et.attributes)::text ILIKE %(q)s OR (et.attributes->>'git_hash') ILIKE %(q)s)"
+                )
+            )
+
         where_sql = sql.SQL(" AND ").join(conditions) if conditions else sql.SQL("TRUE")
 
         query = sql.SQL("""
@@ -1553,8 +1566,8 @@ class MettaRepo:
 
         async with self.connect() as con:
             async with con.cursor(row_factory=class_row(EvalTaskWithPolicyName)) as cur:
-                # keep long scans from wedging the connection
-                await cur.execute("SET LOCAL statement_timeout = %s", (QUERY_TIMEOUT_MS,))
+                # keep long scans from wedging the connection (5000 ms)
+                await cur.execute("SET LOCAL statement_timeout = 5000")
                 await cur.execute(query, params)
                 return await cur.fetchall()
 
