@@ -211,6 +211,7 @@ export function EvalTasks({ repo }: Props) {
   const [completedSortDirection, setCompletedSortDirection] = useState<SortDirection>('desc')
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState<string>('')
+  const [searchLoading, setSearchLoading] = useState<boolean>(false)
 
   // Set up auto-refresh for tasks; keep searchQuery fresh in the callback
   useEffect(() => {
@@ -224,11 +225,14 @@ export function EvalTasks({ repo }: Props) {
 
   const loadTasks = async (q?: string) => {
     try {
+      setSearchLoading(true)
       const loaded = await repo.getEvalTasks(q ?? searchQuery)
       console.log('Loaded', loaded)
       setTasks(loaded)
     } catch (err: any) {
       console.error('Failed to refresh tasks:', err)
+    } finally {
+      setSearchLoading(false)
     }
   }
 
@@ -716,7 +720,7 @@ export function EvalTasks({ repo }: Props) {
       </div>
 
       {/* Global Search (filters both Active and History) */}
-      <div style={{ marginBottom: '16px' }}>
+      <div style={{ marginBottom: '16px', position: 'relative' }}>
         <input
           type="text"
           value={searchQuery}
@@ -729,12 +733,41 @@ export function EvalTasks({ repo }: Props) {
           style={{
             width: '100%',
             padding: '10px 12px',
+            paddingRight: searchLoading ? 36 : undefined,
             borderRadius: 8,
             border: '1px solid #d1d5db',
             fontSize: 14,
             backgroundColor: '#fff',
           }}
         />
+        {searchLoading && (
+          <div
+            style={{
+              position: 'absolute',
+              right: 10,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              display: 'flex',
+              alignItems: 'center',
+              pointerEvents: 'none',
+            }}
+            aria-hidden
+          >
+            <svg width="16" height="16" viewBox="0 0 50 50" role="img" aria-label="Loading">
+              <circle cx="25" cy="25" r="20" stroke="#9ca3af" strokeWidth="4" fill="none" opacity="0.3" />
+              <path d="M25 5 a20 20 0 0 1 0 40" stroke="#007bff" strokeWidth="4" fill="none">
+                <animateTransform
+                  attributeName="transform"
+                  type="rotate"
+                  from="0 25 25"
+                  to="360 25 25"
+                  dur="0.8s"
+                  repeatCount="indefinite"
+                />
+              </path>
+            </svg>
+          </div>
+        )}
       </div>
 
       {/* Active Section */}
