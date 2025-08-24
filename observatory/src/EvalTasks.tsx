@@ -418,48 +418,6 @@ export function EvalTasks({ repo }: Props) {
     })
   }
 
-  const taskMatchesQuery = (task: EvalTask, q: string) => {
-    if (!q) return true
-    const haystacks: string[] = []
-    const displayStatus = getDisplayStatus(task)
-    haystacks.push(
-      task.policy_name || '',
-      task.policy_id,
-      task.sim_suite || '',
-      displayStatus || task.status || '',
-      task.user_id || '',
-      task.assignee || '',
-      String(task.retries ?? '')
-    )
-    if (task.attributes) {
-      try {
-        haystacks.push(JSON.stringify(task.attributes))
-        if ((task as any).attributes?.git_hash) haystacks.push(String((task as any).attributes.git_hash))
-      } catch {}
-    }
-    if (task.created_at) {
-      haystacks.push(task.created_at)
-      try {
-        haystacks.push(new Date(task.created_at + 'Z').toLocaleString())
-      } catch {}
-    }
-    if (task.updated_at) {
-      haystacks.push(task.updated_at)
-      try {
-        haystacks.push(new Date(task.updated_at + 'Z').toLocaleString())
-      } catch {}
-    }
-    if (task.assigned_at) {
-      haystacks.push(task.assigned_at)
-      try {
-        haystacks.push(new Date(task.assigned_at + 'Z').toLocaleString())
-      } catch {}
-    }
-
-    const joined = haystacks.join(' ').toLowerCase()
-    return joined.includes(q)
-  }
-
   const handleSort = (field: SortField, isActive: boolean) => {
     if (isActive) {
       setActiveSortField(field)
